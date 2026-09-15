@@ -6,6 +6,28 @@
 
 ---
 
+## 下载
+
+**免安装，双击即用**（无需 Python 环境）：
+
+👉 [**OneClickModelTest-v1.2.1-windows-x64.exe**](https://github.com/383827453-max/OneClickModelTest/releases/latest)
+
+| 项 | 值 |
+|---|---|
+| 大小 | 52,190,352 字节（约 49.8 MB） |
+| SHA256 | `38732ee0e04124737af6340c6cac43049b6ed10ec1f75326f6200a7df78ef0ff` |
+| 平台 | Windows x64 |
+
+```powershell
+# 下载后校验完整性
+Get-FileHash .\OneClickModelTest-v1.2.1-windows-x64.exe -Algorithm SHA256
+```
+
+> 资产名为英文是因为 GitHub Release 不支持非 ASCII 文件名；
+> 程序运行后窗口标题、注册表键名仍为「一键测API」。
+
+---
+
 ## 功能
 
 | 功能 | 说明 |
