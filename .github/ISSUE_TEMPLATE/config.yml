@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: 📖 先看 README
+    url: https://github.com/383827453-max/OneClickModelTest#readme
+    about: 安装、使用、接口约定、错误分类都在这里，可能已经解答了你的疑问
+
+  - name: 📋 查看 CHANGELOG
+    url: https://github.com/383827453-max/OneClickModelTest/blob/main/CHANGELOG.md
+    about: 确认你的问题是否已在计划中，或新版本已修复
+
+  - name: 🔐 下载最新版 exe
+    url: https://github.com/383827453-max/OneClickModelTest/releases/latest
+    about: 免安装版本在这里，报 Bug 前请先确认用的是最新版

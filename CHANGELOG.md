@@ -9,9 +9,12 @@
 
 ## [Unreleased]
 
+### 新增
+- Issue 模板：Bug 报告表单、功能建议表单，并关闭空白 Issue 入口
+
 ### 计划中
 - 英文 README
-- Issue / PR 模板
+- PR 模板
 - 单元测试（config 读写、错误分类、模型列表归一化）
 
 ---

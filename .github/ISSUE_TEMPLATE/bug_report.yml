@@ -1,0 +1,157 @@
+name: 🐛 Bug 报告
+description: 报告一个可复现的问题
+title: "[Bug] "
+labels: ["bug"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请尽量填完整，尤其是**复现步骤**和**状态栏/提示文字**——
+        本工具的错误提示都是分类过的中文文案，那一行通常就能定位问题。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前确认
+      description: 先排除常见情况，省得来回问
+      options:
+        - label: 我已搜索过现有 Issue，确认没有重复
+          required: true
+        - label: 我使用的是从 Release 下载的最新版本，或最新 `main` 源码
+          required: true
+
+  - type: dropdown
+    id: version
+    attributes:
+      label: 版本
+      description: Release 文件名或窗口右上角的版本号
+      options:
+        - v1.2.1
+        - 从源码 main 分支运行
+        - 其他（在下方补充）
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: 运行方式
+      options:
+        - Release 下载的 exe（免安装）
+        - 源码运行（python main.py）
+        - 自行打包的 exe（pyinstaller build.spec）
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 系统版本
+      description: Win + R 输入 `winver` 查看
+      placeholder: 例如 Windows 11 24H2 (26100.2314)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: endpoint
+    attributes:
+      label: 接口类型
+      description: 出问题的 BASE URL 属于哪类服务
+      options:
+        - 本地部署（如 Ollama / vLLM / LM Studio / one-api）
+        - 云端官方 API（OpenAI / Anthropic / DeepSeek 等）
+        - 第三方中转站
+        - 其他 / 不确定
+    validations:
+      required: true
+
+  - type: input
+    id: baseurl
+    attributes:
+      label: BASE URL 形态
+      description: |
+        只需给出**主机与端口部分**，Key 和路径可省略。
+        ⚠️ 请勿粘贴 API Key。
+      placeholder: 例如 http://localhost:8082/v1
+    validations:
+      required: false
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: 出问题的环节
+      options:
+        - 一键检测（GET /models）
+        - 单模型测试（POST /chat/completions）
+        - 全部测试（批量并发）
+        - 导出（CSV / JSON / TXT）
+        - 历史记录
+        - 界面 / 显示异常
+        - 启动 / 闪退
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: statusline
+    attributes:
+      label: 状态栏提示文字
+      description: |
+        窗口底部那一行，或弹出的 toast 文字——**这是最有价值的信息**。
+        本工具的错误都做了中文分类，例如「连接超时」「HTTP 401」「解析失败」。
+      placeholder: "例如 检测失败: 连接超时"
+    validations:
+      required: false
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 一步步写，越具体越好
+      placeholder: |
+        1. 填写 BASE URL 为 ...
+        2. 填入 API Key
+        3. 点击「一键检测」
+        4. 出现 ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      placeholder: 我认为应当显示模型列表
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      placeholder: 实际提示「连接超时」，但 curl 访问同一地址是通的
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 补充证据
+      description: |
+        可选，但**极其有用**：
+        - 截图
+        - 程序目录下的 `error.log`（若存在）
+        - 对照的 curl 命令及输出，例如：
+          `curl -s -H "Authorization: Bearer sk-xxx" http://localhost:8082/v1/models`
+        ⚠️ 粘贴前请把 Key 涂掉。
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 其他说明
+    validations:
+      required: false

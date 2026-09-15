@@ -129,6 +129,9 @@ POST {BASE URL}/chat/completions    -> {"choices": [...]}
 ├── README.md
 ├── CHANGELOG.md               # 版本变更记录
 ├── LICENSE
+├── .github/
+│   ├── workflows/build.yml    # CI：自动构建 Windows exe
+│   └── ISSUE_TEMPLATE/        # Bug 报告 / 功能建议表单
 └── docs_bytecode_disasm.txt   # 字节码反汇编存档（用于核对逻辑）
 ```
 
