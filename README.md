@@ -127,6 +127,8 @@ POST {BASE URL}/chat/completions    -> {"choices": [...]}
 ├── requirements.txt
 ├── build.spec                 # PyInstaller 打包配置
 ├── README.md
+├── CHANGELOG.md               # 版本变更记录
+├── LICENSE
 └── docs_bytecode_disasm.txt   # 字节码反汇编存档（用于核对逻辑）
 ```
 
