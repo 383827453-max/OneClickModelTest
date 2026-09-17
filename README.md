@@ -2,7 +2,7 @@
 
 一个**科技风深色 GUI 工具**，用于一键检测任意 **OpenAI 兼容接口**的可用模型列表，并逐个/批量测试模型的响应延迟。
 
-> 版本 **v1.2.3** · Python 3.13 + PySide6 · Windows
+> 版本 **v1.2.4** · Python 3.13 + PySide6 · Windows
 
 ![界面预览](docs/screenshot.png)
 
@@ -12,17 +12,17 @@
 
 **免安装，双击即用**（无需 Python 环境）：
 
-👉 [**OneClickModelTest-v1.2.3-windows-x64.exe**](https://github.com/383827453-max/OneClickModelTest/releases/latest)
+👉 [**OneClickModelTest-v1.2.4-windows-x64.exe**](https://github.com/383827453-max/OneClickModelTest/releases/latest)
 
 | 项 | 值 |
 |---|---|
-| 大小 | 57,999,069 字节（约 55.3 MB） |
-| SHA256 | `08b8b2655aafef63d47c5db3e68a51f1c5fa19627ecc441e8c27064644858d76` |
+| 大小 | 58,000,746 字节（约 55.3 MB） |
+| SHA256 | `20db206444c514dbc86e9fb003cf8b29a7ba42b430e3edd452b5d0e892d8b787` |
 | 平台 | Windows x64 |
 
 ```powershell
 # 下载后校验完整性
-Get-FileHash .\OneClickModelTest-v1.2.3-windows-x64.exe -Algorithm SHA256
+Get-FileHash .\OneClickModelTest-v1.2.4-windows-x64.exe -Algorithm SHA256
 ```
 
 > 资产名为英文是因为 GitHub Release 不支持非 ASCII 文件名；
