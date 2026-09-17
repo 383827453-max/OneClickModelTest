@@ -20,11 +20,11 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog,
                                QGraphicsOpacityEffect, QHBoxLayout, QHeaderView,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem,
                                QMainWindow, QMenu, QPushButton, QSizeGrip,
-                               QSpinBox, QTableWidget, QTableWidgetItem,
-                               QToolButton, QVBoxLayout, QWidget)
+                               QSpinBox, QSplitter, QTableWidget, QTableWidgetItem,
+                               QTextEdit, QToolButton, QVBoxLayout, QWidget)
 
 APP_NAME = '一键测API'
-APP_VERSION = '1.2.1'
+APP_VERSION = '1.2.2'
 C_CYAN = '#00e5ff'
 C_PURPLE = '#a855f7'
 C_GREEN = '#00ff9d'
@@ -57,6 +57,9 @@ DEFAULT_CONFIG = {
     "test_timeout": 30,
     "test_concurrency": 3,
     "always_on_top": False,
+    "account_alias": "",
+    "max_tokens": 64,
+    "show_log": True,
 }
 
 
@@ -270,13 +273,44 @@ class ModelTestWorker(QThread):
 
     succeeded = Signal(str, float)
     failed = Signal(str, str, str)
+    # (model_id, event, payload) — event ∈ {sending, connected, response}
+    progress = Signal(str, str, str)
 
-    def __init__(self, base_url, api_key, model_id, timeout=30):
+    def __init__(self, base_url, api_key, model_id, timeout=30, max_tokens=64):
         super().__init__()
         self.base_url = base_url
         self.api_key = api_key
         self.model_id = model_id
         self.timeout = timeout
+        self.max_tokens = max(1, int(max_tokens))
+
+    @staticmethod
+    def _extract_content(resp):
+        """Best-effort pull of the assistant text out of an OpenAI-style reply."""
+        try:
+            body = resp.json()
+        except ValueError:
+            return (resp.text or "").strip()[:2000]
+
+        if isinstance(body, dict):
+            choices = body.get("choices")
+            if isinstance(choices, list) and choices:
+                first = choices[0]
+                if isinstance(first, dict):
+                    msg = first.get("message")
+                    if isinstance(msg, dict):
+                        c = msg.get("content")
+                        if isinstance(c, str) and c.strip():
+                            return c.strip()
+                    t = first.get("text")
+                    if isinstance(t, str) and t.strip():
+                        return t.strip()
+            # non-standard gateways: try the common flat fields
+            for key in ("content", "response", "output_text", "message"):
+                v = body.get(key)
+                if isinstance(v, str) and v.strip():
+                    return v.strip()
+        return ""
 
     def run(self):
         base = (self.base_url or "").strip().rstrip("/")
@@ -288,12 +322,13 @@ class ModelTestWorker(QThread):
         payload = {
             "model": self.model_id,
             "messages": [{"role": "user", "content": "hi"}],
-            "max_tokens": 1,
+            "max_tokens": self.max_tokens,
             "stream": False,
         }
 
         session = requests.Session()
         session.trust_env = False
+        self.progress.emit(self.model_id, "sending", "hi")
         t0 = time.perf_counter()
         try:
             resp = session.post(url, headers=headers, json=payload,
@@ -314,8 +349,11 @@ class ModelTestWorker(QThread):
             return
 
         elapsed = (time.perf_counter() - t0) * 1000.0
+        self.progress.emit(self.model_id, "connected", "")
 
         if resp.status_code == 200:
+            self.progress.emit(self.model_id, "response",
+                               self._extract_content(resp))
             self.succeeded.emit(self.model_id, elapsed)
             return
 
@@ -339,6 +377,7 @@ class ModelTestWorker(QThread):
         elif resp.status_code == 429:
             tag = " (额度不足或触发限流)"
 
+        self.progress.emit(self.model_id, "response", detail)
         self.failed.emit(self.model_id, "HTTP %s" % resp.status_code,
                          ("HTTP %s" % resp.status_code) + tag
                          + (": " + detail if detail else ""))
@@ -475,6 +514,42 @@ QListWidget#modelList {
 QListWidget#modelList::item { border-radius: 8px; }
 QListWidget#modelList::item:hover { background: rgba(0, 229, 255, 14); }
 QListWidget#modelList::item:selected { background: rgba(0, 229, 255, 28); }
+
+QSplitter#mainSplit::handle { background: transparent; height: 8px; }
+QSplitter#mainSplit::handle:hover { background: rgba(0, 229, 255, 40); }
+
+QTextEdit#logView {
+    background-color: rgba(3, 6, 16, 225);
+    border: 1px solid rgba(0, 229, 255, 45);
+    border-radius: 12px;
+    padding: 8px 12px;
+    color: #cfe3ff;
+    font-family: "Consolas", "Cascadia Mono", "Courier New", monospace;
+    font-size: 11px;
+    selection-background-color: rgba(0, 229, 255, 90);
+    selection-color: #04101f;
+}
+QTextEdit#logView QScrollBar:vertical {
+    background: transparent; width: 8px; margin: 2px;
+}
+QTextEdit#logView QScrollBar::handle:vertical {
+    background: rgba(0, 229, 255, 80); border-radius: 4px; min-height: 24px;
+}
+QTextEdit#logView QScrollBar::handle:vertical:hover { background: rgba(0, 229, 255, 140); }
+QTextEdit#logView QScrollBar::add-line:vertical,
+QTextEdit#logView QScrollBar::sub-line:vertical { height: 0; }
+QTextEdit#logView QScrollBar::add-page:vertical,
+QTextEdit#logView QScrollBar::sub-page:vertical { background: transparent; }
+
+QLineEdit#logAlias {
+    background-color: rgba(5, 9, 22, 200);
+    border: 1px solid rgba(0, 229, 255, 45);
+    border-radius: 7px;
+    padding: 4px 10px;
+    color: #8be9ff;
+    font-size: 11px;
+}
+QLineEdit#logAlias:focus { border: 1px solid #00e5ff; }
 
 QListWidget#historyList {
     background-color: rgba(7, 11, 26, 195);
@@ -650,6 +725,97 @@ class ModelRow(QWidget):
         self.btn.setText("重试")
         self.result.setText(str(tag))
         self.result.setStyleSheet("color: %s;" % C_RED)
+
+
+class LogPanel(QWidget):
+    """实时测试日志：逐步显示 账号 / 模型 / 请求 / 响应，确认模型是否真的回了话。"""
+
+    C_KEY = "#7286a8"     # 标签
+    C_VAL = "#8be9ff"     # 值
+    C_RES = "#00ff9d"     # 响应正文 / 成功
+    C_ERR = "#ff3b6b"     # 失败
+    C_DIM = "#3a4a68"     # 分隔线
+    C_WARN = "#ffd166"    # 提示
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("logPanel")
+        self.setMinimumHeight(150)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        self.title = QLabel("▍测试日志  TEST LOG")
+        self.title.setObjectName("groupHeader")
+        self.ed_alias = QLineEdit()
+        self.ed_alias.setObjectName("logAlias")
+        self.ed_alias.setPlaceholderText("账号别名（可选）")
+        self.ed_alias.setFixedWidth(170)
+        self.ed_alias.setToolTip("日志里「开始测试账号」显示的名字；留空则用 BASE URL 主机名")
+        self.btn_clear = QPushButton("清空")
+        self.btn_clear.setObjectName("ghostBtn")
+        self.btn_clear.setFixedWidth(56)
+        self.btn_clear.setCursor(Qt.PointingHandCursor)
+        self.btn_clear.clicked.connect(self.clear_log)
+        head.addWidget(self.title)
+        head.addStretch(1)
+        head.addWidget(self.ed_alias)
+        head.addWidget(self.btn_clear)
+        lay.addLayout(head)
+
+        self.view = QTextEdit()
+        self.view.setObjectName("logView")
+        self.view.setReadOnly(True)
+        self.view.setLineWrapMode(QTextEdit.WidgetWidth)
+        self.view.document().setDefaultStyleSheet(
+            "p{margin:0;padding:0;}"
+            "span.k{color:%s;} span.v{color:%s;} span.r{color:%s;}"
+            "span.e{color:%s;} span.d{color:%s;} span.w{color:%s;}"
+            % (self.C_KEY, self.C_VAL, self.C_RES,
+               self.C_ERR, self.C_DIM, self.C_WARN))
+        lay.addWidget(self.view, 1)
+
+    # ---------- 内部 ----------
+
+    @staticmethod
+    def _esc(s):
+        return (str(s).replace("&", "&amp;")
+                       .replace("<", "&lt;")
+                       .replace(">", "&gt;"))
+
+    def _put(self, html):
+        self.view.append(html)
+        bar = self.view.verticalScrollBar()
+        bar.setValue(bar.maximum())
+
+    # ---------- 公开 API ----------
+
+    def kv(self, key, value, cls="v"):
+        """一行「标签：值」"""
+        self._put('<p><span class="k">%s</span><span class="%s">%s</span></p>'
+                  % (self._esc(key), cls, self._esc(value)))
+
+    def line(self, text, cls="v"):
+        self._put('<p><span class="%s">%s</span></p>' % (cls, self._esc(text)))
+
+    def sep(self):
+        self._put('<p><span class="d">%s</span></p>' % ("─" * 46))
+
+    def response(self, text):
+        """响应块：标题 + 逐行正文"""
+        self._put('<p><span class="k">响应：</span></p>')
+        body = (text or "").strip()
+        if not body:
+            self._put('<p><span class="w">(空响应)</span></p>')
+            return
+        for ln in body.splitlines():
+            self._put('<p><span class="r">%s</span></p>' % self._esc(ln))
+
+    def clear_log(self):
+        self.view.clear()
 
 
 class RootWidget(QWidget):
@@ -896,8 +1062,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_NAME)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.resize(980, 720)
-        self.setMinimumSize(760, 560)
+        self.resize(1000, 820)
+        self.setMinimumSize(780, 620)
 
         self.cfg = load_config()
         self.models = []
@@ -908,6 +1074,7 @@ class MainWindow(QMainWindow):
         self._rows = {}
         self._results = {}
         self._workers = []
+        self._log_multi = False
 
         root = RootWidget(self)
         self.setCentralWidget(root)
@@ -954,6 +1121,10 @@ class MainWindow(QMainWindow):
         self.sp_conf.setRange(1, 32)
         self.sp_conf.setValue(int(self.cfg.get("test_concurrency", 3)))
         self.sp_conf.setToolTip("批量测试时的最大并发请求数")
+        self.sp_maxtok = QSpinBox()
+        self.sp_maxtok.setRange(1, 8192)
+        self.sp_maxtok.setValue(int(self.cfg.get("max_tokens", 64)))
+        self.sp_maxtok.setToolTip("测试请求的 max_tokens：设大一点才能看出模型是否完整回话")
         form.addWidget(QLabel("BASE URL"))
         form.addWidget(self.ed_url, 3)
         form.addWidget(QLabel("API Key"))
@@ -963,6 +1134,8 @@ class MainWindow(QMainWindow):
         form.addWidget(self.sp_timeout)
         form.addWidget(QLabel("并发数"))
         form.addWidget(self.sp_conf)
+        form.addWidget(QLabel("回复上限"))
+        form.addWidget(self.sp_maxtok)
         bl.addLayout(form)
 
         self.btn_detect = DetectButton("⚡  一 键 检 测")
@@ -985,17 +1158,39 @@ class MainWindow(QMainWindow):
         self.btn_hist = QPushButton("历史")
         self.btn_hist.setObjectName("ghostBtn")
         self.btn_hist.clicked.connect(self.show_history)
+        self.btn_log = QPushButton("日志")
+        self.btn_log.setObjectName("ghostBtn")
+        self.btn_log.setCheckable(True)
+        self.btn_log.setChecked(True)
+        self.btn_log.setToolTip("显示 / 隐藏下方测试日志面板")
+        self.btn_log.toggled.connect(self._toggle_logpanel)
         bar.addWidget(self.ed_search, 1)
         bar.addWidget(self.btn_all)
         bar.addWidget(self.btn_copy_all)
         bar.addWidget(self.btn_export)
         bar.addWidget(self.btn_hist)
+        bar.addWidget(self.btn_log)
         bl.addLayout(bar)
 
         self.list = QListWidget()
         self.list.setObjectName("modelList")
         self.list.setSelectionMode(QAbstractItemView.SingleSelection)
-        bl.addWidget(self.list, 1)
+
+        self.logpanel = LogPanel(self)
+        self.logpanel.ed_alias.setText(self.cfg.get("account_alias", "") or "")
+        show_log = bool(self.cfg.get("show_log", True))
+        self.logpanel.setVisible(show_log)
+        self.btn_log.setChecked(show_log)
+
+        self.split = QSplitter(Qt.Vertical)
+        self.split.setObjectName("mainSplit")
+        self.split.setChildrenCollapsible(False)
+        self.split.addWidget(self.list)
+        self.split.addWidget(self.logpanel)
+        self.split.setStretchFactor(0, 3)
+        self.split.setStretchFactor(1, 2)
+        self.split.setSizes([400, 230])
+        bl.addWidget(self.split, 1)
 
         self.status = QLabel("就绪")
         self.status.setObjectName("footer")
@@ -1048,10 +1243,21 @@ class MainWindow(QMainWindow):
         self.cfg["timeout"] = int(self.sp_timeout.value())
         self.cfg["test_concurrency"] = int(self.sp_conf.value())
         self.cfg["always_on_top"] = bool(self.titlebar.pin.isChecked())
+        self.cfg["account_alias"] = self.logpanel.ed_alias.text().strip()
+        self.cfg["max_tokens"] = int(self.sp_maxtok.value())
+        self.cfg["show_log"] = bool(self.btn_log.isChecked())
         if save_config_data(self.cfg):
             self.toast("配置已保存")
         else:
             self.toast("配置保存失败")
+
+    def _toggle_logpanel(self, on):
+        """显示 / 隐藏测试日志面板，并记住选择。"""
+        self.logpanel.setVisible(bool(on))
+        if on:
+            self.split.setSizes([400, 230])
+        self.cfg["show_log"] = bool(on)
+        save_config_data(self.cfg)
 
     def start_detect(self):
         url = self.ed_url.text().strip()
@@ -1083,6 +1289,10 @@ class MainWindow(QMainWindow):
         self.cfg["base_url"] = self.ed_url.text().strip()
         self.cfg["api_key"] = self.ed_key.text().strip()
         self.cfg["timeout"] = int(self.sp_timeout.value())
+        self.cfg["test_concurrency"] = int(self.sp_conf.value())
+        self.cfg["account_alias"] = self.logpanel.ed_alias.text().strip()
+        self.cfg["max_tokens"] = int(self.sp_maxtok.value())
+        self.cfg["show_log"] = bool(self.btn_log.isChecked())
         save_config_data(self.cfg)
 
     def _set_busy(self, busy):
@@ -1128,20 +1338,58 @@ class MainWindow(QMainWindow):
         })
         save_history(items[:200])
 
-    def test_model(self, model_id):
+    # ---------- 日志 ----------
+
+    def _account_name(self):
+        """日志里显示的账号名：优先用别名，否则退到 BASE URL 主机名。"""
+        alias = (self.logpanel.ed_alias.text() or "").strip()
+        if alias:
+            return alias
+        url = (self.ed_url.text() or "").strip()
+        host = url.split("//")[-1].split("/")[0] if url else ""
+        return host or "未命名账号"
+
+    def _start_log(self, model_id):
+        """开一条日志：单测打完整链路，批量不打头部（结果行自带模型名）。"""
+        if self._log_multi:
+            return
+        lp = self.logpanel
+        lp.sep()
+        lp.kv("开始测试账号：", self._account_name())
+        lp.kv("账号类型：", "apikey")
+        lp.kv("使用模型：", model_id)
+
+    def _on_test_progress(self, model_id, event, payload):
+        # 批量模式下多个 worker 并发，过程行会相互交错、无法归属到具体模型，
+        # 因此只保留最终结果行；完整链路仅在单个测试时展开。
+        if self._log_multi:
+            return
+        lp = self.logpanel
+        if event == "sending":
+            lp.kv("发送测试消息：", '"%s"' % payload)
+        elif event == "connected":
+            lp.line("已连接到 API")
+        elif event == "response":
+            lp.response(payload)
+
+    def test_model(self, model_id, batch=False):
         if not self.ed_key.text().strip():
             self.toast("测试模型需要填写 API Key")
             return
+        self._log_multi = bool(batch)
         row = self._rows.get(model_id)
         if row is not None:
             row.set_testing()
-        self._set_status("测试中..." if False else "测试中...")
+        self._set_status("测试中...")
+        self._start_log(model_id)
         w = ModelTestWorker(
             self.ed_url.text().strip(),
             self.ed_key.text().strip(),
             model_id,
             int(self.cfg.get("test_timeout", 30)),
+            int(self.sp_maxtok.value()),
         )
+        w.progress.connect(self._on_test_progress)
         w.succeeded.connect(self._on_test_success)
         w.failed.connect(self._on_test_failure)
         w.finished.connect(self._on_test_thread_finished)
@@ -1160,6 +1408,13 @@ class MainWindow(QMainWindow):
             return
         n = max(1, int(self.sp_conf.value()))
         self._pending = [m["id"] for m in self.models]
+        self._log_multi = True
+        lp = self.logpanel
+        lp.sep()
+        lp.kv("开始批量测试账号：", self._account_name())
+        lp.kv("账号类型：", "apikey")
+        lp.kv("并发数：", str(n))
+        lp.line("共 %d 个模型待测" % len(self._pending))
         self.toast("开始批量测试 %d 个模型（最多 %d 并发）" % (len(self._pending), n))
         self._pump_test_queue()
 
@@ -1168,19 +1423,32 @@ class MainWindow(QMainWindow):
         while self._pending and self._active < n:
             mid = self._pending.pop(0)
             self._active += 1
-            self.test_model(mid)
+            self.test_model(mid, batch=True)
 
     def _on_test_success(self, model_id, ms):
         self._results[model_id] = ms
         row = self._rows.get(model_id)
         if row is not None:
             row.set_result(ms)
+        if self._log_multi:
+            self.logpanel.line("  ✓ %s  ·  %.0f ms" % (model_id, ms), "r")
+        else:
+            self.logpanel.sep()
+            self.logpanel.line("✓ 测试完成!   响应 %.0f ms" % ms, "r")
 
     def _on_test_failure(self, model_id, tag, detail):
         self._results[model_id] = tag
         row = self._rows.get(model_id)
         if row is not None:
             row.set_error(tag)
+        if self._log_multi:
+            self.logpanel.line("  ✗ %s  ·  %s" % (model_id, tag), "e")
+        else:
+            self.logpanel.sep()
+            self.logpanel.line("✗ 测试失败: %s" % tag, "e")
+            if detail:
+                for ln in str(detail).splitlines():
+                    self.logpanel.line(ln, "e")
 
     def _on_test_thread_finished(self):
         self._active = max(0, self._active - 1)
@@ -1188,8 +1456,14 @@ class MainWindow(QMainWindow):
             self._pump_test_queue()
         elif self._active == 0:
             ok = sum(1 for v in self._results.values() if isinstance(v, float))
-            self.toast("批量测试完成: %d/%d 成功" % (ok, len(self.models)))
-            self._set_status("批量测试完成: %d/%d 成功" % (ok, len(self.models)))
+            msg = "批量测试完成: %d/%d 成功" % (ok, len(self.models))
+            if self._log_multi:
+                self.logpanel.sep()
+                self.logpanel.line("✓ " + msg if ok else "✗ " + msg,
+                                   "r" if ok else "e")
+            self._log_multi = False
+            self.toast(msg)
+            self._set_status(msg)
 
     def _cancel_all_tests(self):
         self._pending = []

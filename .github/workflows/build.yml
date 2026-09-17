@@ -28,6 +28,12 @@ jobs:
       - name: Syntax check
         run: python -m py_compile main.py
 
+      - name: UI smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONIOENCODING: utf-8
+        run: python tests/smoke_v122.py
+
       - name: Build executable
         run: pyinstaller build.spec --noconfirm
 

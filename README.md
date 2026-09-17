@@ -2,7 +2,7 @@
 
 一个**科技风深色 GUI 工具**，用于一键检测任意 **OpenAI 兼容接口**的可用模型列表，并逐个/批量测试模型的响应延迟。
 
-> 版本 **v1.2.1** · Python 3.13 + PySide6 · Windows
+> 版本 **v1.2.2** · Python 3.13 + PySide6 · Windows
 
 ---
 
@@ -25,6 +25,9 @@ Get-FileHash .\OneClickModelTest-v1.2.1-windows-x64.exe -Algorithm SHA256
 
 > 资产名为英文是因为 GitHub Release 不支持非 ASCII 文件名；
 > 程序运行后窗口标题、注册表键名仍为「一键测API」。
+>
+> 上方为准发布的 **v1.2.1** 构建；**v1.2.2** 源码已就绪（实时日志面板 /
+> 响应回显 / 回复上限可调），exe 由 CI 推送 tag 后构建。
 
 ---
 
@@ -35,6 +38,8 @@ Get-FileHash .\OneClickModelTest-v1.2.1-windows-x64.exe -Algorithm SHA256
 | 🔍 一键检测 | `GET {BASE URL}/models` 拉取全部可用模型 |
 | ⚡ 单模型测试 | `POST {BASE URL}/chat/completions` 测真实响应时间（ms） |
 | ⚡ 全部测试 | 按设定的**并发数**批量测，最大并发可调 |
+| 📜 实时日志 | 窗口下方日志面板逐步显示：账号 → 模型 → 发送消息 → 已连接 → **响应正文** → 耗时 |
+| 🎚️ 回复上限 | 测试请求 `max_tokens` 可调（1–8192，默认 64），能看出模型是否真的完整回话 |
 | 🔎 搜索过滤 | 按模型 ID 实时过滤列表 |
 | 📋 复制 | 单条复制 / 一键复制全部模型 ID |
 | 💾 导出 | CSV（表格）/ JSON（完整数据）/ TXT（纯模型 ID） |
@@ -48,6 +53,7 @@ Get-FileHash .\OneClickModelTest-v1.2.1-windows-x64.exe -Algorithm SHA256
 - 深色渐变底 + 网格纹理 + 径向辉光
 - 自定义状态指示灯（就绪 / 检测中 / 成功 / 失败，带呼吸动画）
 - 主按钮悬停高度动画，卡片式模型行
+- 模型列表 / 日志面板用垂直 `QSplitter` 分隔，高度可拖拽，工具栏「日志」按钮可整体收起
 - 全局 QSS 主题，含 hover / pressed / disabled 全态
 
 ## 安装
@@ -76,7 +82,25 @@ pyinstaller build.spec --noconfirm
 2. 填入 **API Key**（检测模型列表可留空，**测试模型响应时间必须填写**）
 3. 点「⚡ 一键检测」拉取模型列表
 4. 点单行「测试」按钮，或「⚡ 全部测试」批量跑延迟
-5. 「导出 ▾」保存结果
+5. 看下方**日志面板**：会显示「开始测试账号 / 使用模型 / 发送测试消息 /
+   已连接 / 响应正文 / 耗时」，用来确认模型是**真的回了话**还是只返回了空壳
+6. 「导出 ▾」保存结果
+
+> 日志面板顶部可填**账号别名**（留空则显示 BASE URL 主机名）；
+> 「回复上限」控制测试请求的 `max_tokens`，设太小可能只拿到截断回复。
+
+## 测试
+
+```bash
+# 离屏冒烟测试（21 项断言，不联网、不写注册表）
+QT_QPA_PLATFORM=offscreen python tests/smoke_v122.py
+```
+
+Windows PowerShell：
+
+```powershell
+$env:QT_QPA_PLATFORM="offscreen"; python tests/smoke_v122.py
+```
 
 ## 接口约定
 
@@ -93,10 +117,14 @@ POST {BASE URL}/chat/completions    -> {"choices": [...]}
 {
   "model": "<model id>",
   "messages": [{"role": "user", "content": "hi"}],
-  "max_tokens": 1,
+  "max_tokens": 64,
   "stream": false
 }
 ```
+
+`max_tokens` 取自界面「回复上限」，默认 64。响应正文按
+`choices[0].message.content` → `choices[0].text` → 扁平 `content` /
+`response` / `output_text` / `message` 的顺序提取，都不命中则回落原始响应体。
 
 ## 错误处理
 
@@ -123,14 +151,16 @@ POST {BASE URL}/chat/completions    -> {"choices": [...]}
 
 ```
 .
-├── main.py                    # 全部源码（单文件，1372 行）
+├── main.py                    # 全部源码（单文件，1646 行）
 ├── requirements.txt
 ├── build.spec                 # PyInstaller 打包配置
 ├── README.md
 ├── CHANGELOG.md               # 版本变更记录
 ├── LICENSE
+├── tests/
+│   └── smoke_v122.py          # 离屏 UI 冒烟测试（CI 里跑）
 ├── .github/
-│   ├── workflows/build.yml    # CI：自动构建 Windows exe
+│   ├── workflows/build.yml    # CI：冒烟测试 + 自动构建 Windows exe
 │   └── ISSUE_TEMPLATE/        # Bug 报告 / 功能建议表单
 └── docs_bytecode_disasm.txt   # 字节码反汇编存档（用于核对逻辑）
 ```
@@ -146,10 +176,11 @@ main.py
 ├── 渲染          make_app_pixmap / GLOBAL_QSS
 ├── 线程          ApiWorker         → GET /models
 │                 ModelTestWorker   → POST /chat/completions
+│                                     （progress 信号上报 发送/已连接/响应）
 ├── UI 组件       StatusDot / DetectButton / ModelRow
-│                 RootWidget / WindowFrame / TitleBar
+│                 LogPanel（实时测试日志）/ RootWidget / WindowFrame / TitleBar
 │                 HistoryRow / HistoryDialog
-└── 主窗口        MainWindow（检测、批量测试队列、导出、历史、toast）
+└── 主窗口        MainWindow（检测、批量测试队列、导出、历史、日志、toast）
 ```
 
 ## License
