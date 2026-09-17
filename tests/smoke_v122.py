@@ -21,12 +21,25 @@ app.processEvents()
 checks = []
 
 
-def ck(name, cond):
-    checks.append((name, bool(cond)))
+def ck(name, cond, extra=""):
+    checks.append((name, bool(cond), extra))
+
+
+def _ver(s):
+    """把 '1.2.3' 转成可比较的元组，非法返回 (0,)。"""
+    try:
+        return tuple(int(x) for x in str(s).split("."))
+    except (ValueError, AttributeError):
+        return (0,)
 
 
 # 1. 版本 / 关键控件
-ck("APP_VERSION == 1.2.2", main.APP_VERSION == "1.2.2")
+# 注意：这里断言「>= 1.2.2」而不是写死等号 —— 否则每次升版这个测试都会变红。
+ck("APP_VERSION 为 x.y.z 形式",
+   len(_ver(main.APP_VERSION)) == 3 and all(isinstance(x, int) for x in _ver(main.APP_VERSION)),
+   main.APP_VERSION)
+ck("APP_VERSION >= 1.2.2（本测试覆盖的功能集）",
+   _ver(main.APP_VERSION) >= (1, 2, 2), main.APP_VERSION)
 ck("max_tokens 输入框存在", w.sp_maxtok.value() == 64 and w.sp_maxtok.maximum() == 8192)
 ck("日志开关默认勾选 + 面板可见", w.btn_log.isChecked() and w.logpanel.isVisible())
 
@@ -119,8 +132,8 @@ ck("progress 可连接", wk.progress.connect(lambda *a: None) is not None
 w.close()
 app.quit()
 
-bad = [n for n, ok in checks if not ok]
-for n, ok in checks:
+bad = [n for n, ok, *_ in checks if not ok]
+for n, ok, *_ in checks:
     print(("  PASS  " if ok else "  FAIL  ") + n)
 print("\n%d/%d passed" % (len(checks) - len(bad), len(checks)))
 sys.exit(1 if bad else 0)

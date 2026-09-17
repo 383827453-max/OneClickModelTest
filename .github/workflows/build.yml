@@ -28,11 +28,23 @@ jobs:
       - name: Syntax check
         run: python -m py_compile main.py
 
-      - name: UI smoke test
+      - name: UI smoke tests
         env:
           QT_QPA_PLATFORM: offscreen
           PYTHONIOENCODING: utf-8
-        run: python tests/smoke_v122.py
+        shell: pwsh
+        run: |
+          $failed = @()
+          Get-ChildItem tests/smoke_*.py | Sort-Object Name | ForEach-Object {
+            Write-Host "=== $($_.Name) ==="
+            python $_.FullName
+            if ($LASTEXITCODE -ne 0) { $failed += $_.Name }
+          }
+          if ($failed.Count -gt 0) {
+            Write-Host "FAILED: $($failed -join ', ')"
+            exit 1
+          }
+          Write-Host "all smoke tests passed"
 
       - name: Build executable
         run: pyinstaller build.spec --noconfirm

@@ -2,7 +2,7 @@
 
 一个**科技风深色 GUI 工具**，用于一键检测任意 **OpenAI 兼容接口**的可用模型列表，并逐个/批量测试模型的响应延迟。
 
-> 版本 **v1.2.2** · Python 3.13 + PySide6 · Windows
+> 版本 **v1.2.3** · Python 3.13 + PySide6 · Windows
 
 ![界面预览](docs/screenshot.png)
 
@@ -12,24 +12,23 @@
 
 **免安装，双击即用**（无需 Python 环境）：
 
-👉 [**OneClickModelTest-v1.2.1-windows-x64.exe**](https://github.com/383827453-max/OneClickModelTest/releases/latest)
+👉 [**OneClickModelTest-v1.2.2-windows-x64.exe**](https://github.com/383827453-max/OneClickModelTest/releases/latest)
 
 | 项 | 值 |
 |---|---|
-| 大小 | 52,190,352 字节（约 49.8 MB） |
-| SHA256 | `38732ee0e04124737af6340c6cac43049b6ed10ec1f75326f6200a7df78ef0ff` |
+| 大小 | 57,993,831 字节（约 55.3 MB） |
+| SHA256 | `e5ceacb44c4d2acafb5d12c6ab1758d029938a3a818d72dddf84767b5a51f9af` |
 | 平台 | Windows x64 |
 
 ```powershell
 # 下载后校验完整性
-Get-FileHash .\OneClickModelTest-v1.2.1-windows-x64.exe -Algorithm SHA256
+Get-FileHash .\OneClickModelTest-v1.2.2-windows-x64.exe -Algorithm SHA256
 ```
 
 > 资产名为英文是因为 GitHub Release 不支持非 ASCII 文件名；
 > 程序运行后窗口标题、注册表键名仍为「一键测API」。
 >
-> 上方为准发布的 **v1.2.1** 构建；**v1.2.2** 源码已就绪（实时日志面板 /
-> 响应回显 / 回复上限可调），exe 由 CI 推送 tag 后构建。
+> 历史版本见 [Releases](https://github.com/383827453-max/OneClickModelTest/releases)。
 
 ---
 
@@ -42,6 +41,7 @@ Get-FileHash .\OneClickModelTest-v1.2.1-windows-x64.exe -Algorithm SHA256
 | ⚡ 全部测试 | 按设定的**并发数**批量测，最大并发可调 |
 | 📜 实时日志 | 窗口下方日志面板逐步显示：账号 → 模型 → 发送消息 → 已连接 → **响应正文** → 耗时 |
 | 🎚️ 回复上限 | 测试请求 `max_tokens` 可调（1–8192，默认 64），能看出模型是否真的完整回话 |
+| 📦 配置导入导出 | 工具栏「配置 ▾」一键导出/导入 JSON，或复制/粘贴到剪贴板，便于备份与换机 |
 | 🔎 搜索过滤 | 按模型 ID 实时过滤列表 |
 | 📋 复制 | 单条复制 / 一键复制全部模型 ID |
 | 💾 导出 | CSV（表格）/ JSON（完整数据）/ TXT（纯模型 ID） |
@@ -149,6 +149,52 @@ POST {BASE URL}/chat/completions    -> {"choices": [...]}
 
 若检测到旧版 `config.json` / `history.json` 位于程序目录，会自动迁移进注册表并删除原文件。
 
+## 配置导入 / 导出
+
+工具栏 **「配置 ▾」** 提供四个操作，全部一键完成：
+
+| 菜单项 | 作用 |
+|---|---|
+| 导出配置为 JSON 文件 | 把当前全部设置写入 JSON（默认名 `一键测API-配置-YYYYMMDD.json`） |
+| 从 JSON 文件导入配置 | 选文件后立即应用并持久化 |
+| 复制配置到剪贴板 | 直接把 JSON 放进剪贴板 |
+| 从剪贴板粘贴配置 | 从剪贴板读取并应用 |
+| 恢复默认配置 | 一键回到出厂设置 |
+
+导出的 JSON 带自描述头，方便识别和分享：
+
+```json
+{
+  "app": "一键测API",
+  "kind": "config",
+  "version": "1.2.3",
+  "exported_at": "2026-09-18 00:30:00",
+  "note": "此文件包含 API Key，请妥善保管",
+  "config": {
+    "base_url": "http://localhost:8082/v1",
+    "api_key": "sk-...",
+    "timeout": 15,
+    "test_concurrency": 3,
+    "max_tokens": 64,
+    "account_alias": "",
+    "always_on_top": false,
+    "show_log": true
+  }
+}
+```
+
+> ⚠️ 导出的文件**包含明文 API Key**，请勿提交到公开仓库或发送给他人。
+
+**导入是容错的**，不会因为一个字段写错就整体失败：
+
+- 兼容 `{config:{...}}` 包装形式和**裸配置**（顶层直接是字段）
+- 类型不符的字段丢弃（如 `timeout: "abc"`、`base_url: 123`）
+- 未知键忽略，不影响其余字段导入
+- 数字型字段接受数字字符串（`"77"` → `77`）
+- 布尔字段接受 `"true"` / `"1"` / `"yes"` / `"on"`
+- `base_url` 为空 → **整体拒绝**，不覆盖当前配置
+- 无任何有效字段 → 拒绝并提示
+
 ## 项目结构
 
 ```
@@ -160,12 +206,25 @@ POST {BASE URL}/chat/completions    -> {"choices": [...]}
 ├── CHANGELOG.md               # 版本变更记录
 ├── LICENSE
 ├── tests/
-│   └── smoke_v122.py          # 离屏 UI 冒烟测试（CI 里跑）
+│   ├── smoke_v122.py          # 日志面板冒烟测试（22 项断言）
+│   └── smoke_config_io.py     # 配置导入导出测试（52 项断言）
 ├── .github/
-│   ├── workflows/build.yml    # CI：冒烟测试 + 自动构建 Windows exe
+│   ├── workflows/build.yml    # CI：遍历跑 smoke_*.py + 构建 Windows exe
 │   └── ISSUE_TEMPLATE/        # Bug 报告 / 功能建议表单
+├── docs/
+│   └── screenshot.png         # 界面预览图
 └── docs_bytecode_disasm.txt   # 字节码反汇编存档（用于核对逻辑）
 ```
+
+## 测试
+
+```bash
+# 全部冒烟测试（不联网、不写注册表）
+python tests/smoke_v122.py
+python tests/smoke_config_io.py
+```
+
+CI 会自动遍历 `tests/smoke_*.py`，新增测试文件无需改 workflow。
 
 ## 源码结构
 
@@ -183,6 +242,9 @@ main.py
 │                 LogPanel（实时测试日志）/ RootWidget / WindowFrame / TitleBar
 │                 HistoryRow / HistoryDialog
 └── 主窗口        MainWindow（检测、批量测试队列、导出、历史、日志、toast）
+                  配置导入导出：export_config_json / import_config_json /
+                  copy_config_json / paste_config_json / reset_config /
+                  _parse_config_payload / _apply_cfg_to_ui
 ```
 
 ## License

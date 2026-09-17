@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog,
                                QTextEdit, QToolButton, QVBoxLayout, QWidget)
 
 APP_NAME = '一键测API'
-APP_VERSION = '1.2.2'
+APP_VERSION = '1.2.3'
 C_CYAN = '#00e5ff'
 C_PURPLE = '#a855f7'
 C_GREEN = '#00ff9d'
@@ -1155,6 +1155,10 @@ class MainWindow(QMainWindow):
         self.btn_export = QPushButton("导出 ▾")
         self.btn_export.setObjectName("ghostBtn")
         self.btn_export.clicked.connect(self.export_results)
+        self.btn_cfg = QPushButton("配置 ▾")
+        self.btn_cfg.setObjectName("ghostBtn")
+        self.btn_cfg.setToolTip("一键导入 / 导出配置（BASE URL、Key、超时、并发、别名等）")
+        self.btn_cfg.clicked.connect(self.show_config_menu)
         self.btn_hist = QPushButton("历史")
         self.btn_hist.setObjectName("ghostBtn")
         self.btn_hist.clicked.connect(self.show_history)
@@ -1168,6 +1172,7 @@ class MainWindow(QMainWindow):
         bar.addWidget(self.btn_all)
         bar.addWidget(self.btn_copy_all)
         bar.addWidget(self.btn_export)
+        bar.addWidget(self.btn_cfg)
         bar.addWidget(self.btn_hist)
         bar.addWidget(self.btn_log)
         bl.addLayout(bar)
@@ -1259,6 +1264,154 @@ class MainWindow(QMainWindow):
         self.cfg["show_log"] = bool(on)
         save_config_data(self.cfg)
 
+    # ---------- 配置一键导入 / 导出 ----------
+
+    def show_config_menu(self):
+        menu = QMenu(self)
+        act_exp = menu.addAction("导出配置为 JSON 文件 ...")
+        act_imp = menu.addAction("从 JSON 文件导入配置 ...")
+        menu.addSeparator()
+        act_copy = menu.addAction("复制配置到剪贴板")
+        act_paste = menu.addAction("从剪贴板粘贴配置")
+        menu.addSeparator()
+        act_reset = menu.addAction("恢复默认配置")
+        act = menu.exec(self.btn_cfg.mapToGlobal(self.btn_cfg.rect().bottomLeft()))
+        if act is act_exp:
+            self.export_config_json()
+        elif act is act_imp:
+            self.import_config_json()
+        elif act is act_copy:
+            self.copy_config_json()
+        elif act is act_paste:
+            self.paste_config_json()
+        elif act is act_reset:
+            self.reset_config()
+
+    def _config_payload(self):
+        """当前配置 → 可序列化字典（含 API Key）。"""
+        self._save_now()
+        return {
+            "app": APP_NAME,
+            "kind": "config",
+            "version": APP_VERSION,
+            "exported_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "note": "此文件包含 API Key，请妥善保管",
+            "config": {k: self.cfg.get(k, DEFAULT_CONFIG[k]) for k in DEFAULT_CONFIG},
+        }
+
+    def export_config_json(self):
+        default = "一键测API-配置-%s.json" % datetime.now().strftime("%Y%m%d")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "导出配置", default, "JSON 文件 (*.json);;所有文件 (*)")
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self._config_payload(), f, ensure_ascii=False, indent=2)
+        except OSError as e:
+            self.toast("导出失败: %s" % e)
+            return
+        self.toast("配置已导出: " + os.path.basename(path))
+
+    def import_config_json(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "导入配置", "", "JSON 文件 (*.json);;所有文件 (*)")
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8-sig") as f:
+                data = json.load(f)
+        except (OSError, ValueError) as e:
+            self.toast("导入失败: %s" % e)
+            return
+        self._apply_imported(data, os.path.basename(path))
+
+    def copy_config_json(self):
+        text = json.dumps(self._config_payload(), ensure_ascii=False, indent=2)
+        QApplication.clipboard().setText(text)
+        self.toast("配置 JSON 已复制到剪贴板")
+
+    def paste_config_json(self):
+        text = QApplication.clipboard().text() or ""
+        if not text.strip():
+            self.toast("剪贴板为空")
+            return
+        try:
+            data = json.loads(text)
+        except ValueError:
+            self.toast("剪贴板内容不是有效 JSON")
+            return
+        self._apply_imported(data, "剪贴板")
+
+    def reset_config(self):
+        self.cfg = dict(DEFAULT_CONFIG)
+        self._apply_cfg_to_ui()
+        save_config_data(self.cfg)
+        self.toast("已恢复默认配置")
+
+    @staticmethod
+    def _parse_config_payload(data):
+        """接受 {config:{...}} 包装形式或裸配置；逐字段校验类型，非法项丢弃。"""
+        if not isinstance(data, dict):
+            return {}
+        src = data.get("config")
+        if not isinstance(src, dict):
+            src = data
+        out = {}
+        for key, raw in src.items():
+            if key not in DEFAULT_CONFIG:
+                continue
+            want = type(DEFAULT_CONFIG[key])
+            if want is bool:
+                if isinstance(raw, bool):
+                    out[key] = raw
+                elif isinstance(raw, str):
+                    out[key] = raw.strip().lower() in ("1", "true", "yes", "on")
+            elif want is int:
+                if isinstance(raw, bool):
+                    continue
+                if isinstance(raw, (int, float)):
+                    out[key] = int(raw)
+                elif isinstance(raw, str) and raw.strip().lstrip("+-").isdigit():
+                    out[key] = int(raw.strip())
+            elif want is str:
+                if isinstance(raw, str):
+                    out[key] = raw
+        return out
+
+    def _apply_imported(self, data, source):
+        got = self._parse_config_payload(data)
+        if not got:
+            self.toast("导入失败: 未识别到配置字段")
+            return
+        if "base_url" in got and not str(got.get("base_url", "")).strip():
+            self.toast("导入失败: base_url 为空")
+            return
+        for k, v in got.items():
+            self.cfg[k] = v
+        self._apply_cfg_to_ui()
+        save_config_data(self.cfg)
+        self.toast("已从 %s 导入 %d 项配置" % (source, len(got)))
+
+    def _apply_cfg_to_ui(self):
+        """把 self.cfg 写回界面控件。"""
+        self.ed_url.setText(str(self.cfg.get("base_url", "")))
+        self.ed_key.setText(str(self.cfg.get("api_key", "")))
+        self.sp_timeout.setValue(int(self.cfg.get("timeout", 15)))
+        self.sp_conf.setValue(int(self.cfg.get("test_concurrency", 3)))
+        self.sp_maxtok.setValue(int(self.cfg.get("max_tokens", 64)))
+        self.logpanel.ed_alias.setText(str(self.cfg.get("account_alias", "") or ""))
+
+        pin = bool(self.cfg.get("always_on_top"))
+        if self.titlebar.pin.isChecked() != pin:
+            self.titlebar.pin.setChecked(pin)
+
+        show_log = bool(self.cfg.get("show_log", True))
+        if self.btn_log.isChecked() != show_log:
+            self.btn_log.setChecked(show_log)   # 会触发 _toggle_logpanel
+        else:
+            self.logpanel.setVisible(show_log)
+
     def start_detect(self):
         url = self.ed_url.text().strip()
         if not url:
@@ -1293,6 +1446,7 @@ class MainWindow(QMainWindow):
         self.cfg["account_alias"] = self.logpanel.ed_alias.text().strip()
         self.cfg["max_tokens"] = int(self.sp_maxtok.value())
         self.cfg["show_log"] = bool(self.btn_log.isChecked())
+        self.cfg["always_on_top"] = bool(self.titlebar.pin.isChecked())
         save_config_data(self.cfg)
 
     def _set_busy(self, busy):
