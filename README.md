@@ -4,6 +4,8 @@
 
 > 版本 **v1.2.2** · Python 3.13 + PySide6 · Windows
 
+![界面预览](docs/screenshot.png)
+
 ---
 
 ## 下载
