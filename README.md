@@ -12,17 +12,17 @@
 
 **免安装，双击即用**（无需 Python 环境）：
 
-👉 [**OneClickModelTest-v1.2.4-windows-x64.exe**](https://github.com/383827453-max/OneClickModelTest/releases/latest)
+👉 [**OneClickModelTest-v1.2.5-windows-x64.exe**](https://github.com/383827453-max/OneClickModelTest/releases/latest)
 
 | 项 | 值 |
 |---|---|
-| 大小 | 58,000,746 字节（约 55.3 MB） |
-| SHA256 | `20db206444c514dbc86e9fb003cf8b29a7ba42b430e3edd452b5d0e892d8b787` |
+| 大小 | 58,001,400 字节（约 55.3 MB） |
+| SHA256 | `f7079b19df77313dbc6c658a6f4919ad0d2a370e02c33d300706fd6db31e9e3b` |
 | 平台 | Windows x64 |
 
 ```powershell
 # 下载后校验完整性
-Get-FileHash .\OneClickModelTest-v1.2.4-windows-x64.exe -Algorithm SHA256
+Get-FileHash .\OneClickModelTest-v1.2.5-windows-x64.exe -Algorithm SHA256
 ```
 
 > 资产名为英文是因为 GitHub Release 不支持非 ASCII 文件名；
