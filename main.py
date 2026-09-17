@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog,
                                QTextEdit, QToolButton, QVBoxLayout, QWidget)
 
 APP_NAME = '一键测API'
-APP_VERSION = '1.2.3'
+APP_VERSION = '1.2.4'
 C_CYAN = '#00e5ff'
 C_PURPLE = '#a855f7'
 C_GREEN = '#00ff9d'
@@ -402,6 +402,15 @@ QFrame#errorBanner {
 QLabel { background: transparent; }
 QLabel#h1 { color: #00e5ff; font-size: 17px; font-weight: bold; }
 QLabel#sub { color: #7286a8; font-size: 9px; }
+QLabel#subBrand {
+    color: #5d78a0;
+    font-size: 9px;
+    letter-spacing: 3px;
+    font-weight: bold;
+}
+QLabel#appIcon { background: transparent; }
+QLabel#formLabel { color: #8fa5c8; font-size: 12px; font-weight: bold; }
+QLabel#statState { color: #d9e6ff; font-size: 12px; font-weight: bold; }
 QLabel#caption { color: #7286a8; font-size: 10px; font-weight: bold; }
 QLabel#statName { color: #7286a8; font-size: 11px; }
 QLabel#statValue { color: #8be9ff; font-size: 13px; font-weight: bold; font-family: "Consolas", "Cascadia Mono", monospace; }
@@ -409,6 +418,12 @@ QLabel#errorTitle { color: #ff7d9c; font-size: 12px; font-weight: bold; }
 QLabel#errorDetail { color: #d9a3b0; font-size: 11px; font-family: "Consolas", "Cascadia Mono", monospace; }
 QLabel#groupHeader { color: #00e5ff; font-size: 11px; font-weight: bold; padding-left: 12px; }
 QLabel#footer { color: #4c5b78; font-size: 10px; }
+
+QFrame#statBar {
+    background-color: rgba(7, 11, 26, 150);
+    border: 1px solid rgba(0, 229, 255, 35);
+    border-radius: 10px;
+}
 
 QLineEdit, QSpinBox {
     background-color: rgba(5, 9, 22, 215);
@@ -884,7 +899,7 @@ class WindowFrame(QFrame):
 
 
 class TitleBar(QWidget):
-    """Custom frameless title bar with pin / minimize / close."""
+    """Custom frameless title bar: app icon + name/brand + pin / min / close."""
 
     def __init__(self, parent=None, title=APP_NAME):
         super().__init__(parent)
@@ -892,13 +907,23 @@ class TitleBar(QWidget):
         self._drag = None
         lay = QHBoxLayout(self)
         lay.setContentsMargins(14, 8, 10, 8)
-        lay.setSpacing(8)
+        lay.setSpacing(10)
 
-        self.dot = StatusDot(self)
+        self.icon = QLabel(self)
+        self.icon.setObjectName("appIcon")
+        self.icon.setPixmap(make_app_pixmap(34))
+        self.icon.setFixedSize(38, 38)
+
         self.title = QLabel(title)
         self.title.setObjectName("h1")
-        self.sub = QLabel("v%s" % APP_VERSION)
-        self.sub.setObjectName("sub")
+        self.sub = QLabel("API MODEL SCANNER")
+        self.sub.setObjectName("subBrand")
+
+        brand = QVBoxLayout()
+        brand.setContentsMargins(0, 0, 0, 0)
+        brand.setSpacing(1)
+        brand.addWidget(self.title)
+        brand.addWidget(self.sub)
 
         self.pin = QToolButton(self)
         self.pin.setObjectName("titleBtn")
@@ -922,9 +947,8 @@ class TitleBar(QWidget):
         if self._win is not None:
             self.btn_close.clicked.connect(self._win.close)
 
-        lay.addWidget(self.dot)
-        lay.addWidget(self.title)
-        lay.addWidget(self.sub)
+        lay.addWidget(self.icon)
+        lay.addLayout(brand)
         lay.addStretch(1)
         lay.addWidget(self.pin)
         lay.addWidget(self.btn_min)
@@ -1062,8 +1086,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_NAME)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.resize(1000, 820)
-        self.setMinimumSize(780, 620)
+        self.resize(1020, 900)
+        self.setMinimumSize(800, 660)
 
         self.cfg = load_config()
         self.models = []
@@ -1103,44 +1127,112 @@ class MainWindow(QMainWindow):
         head.setObjectName("groupHeader")
         bl.addWidget(head)
 
-        form = QHBoxLayout()
-        form.setSpacing(10)
+        LBL_W = 70   # 表单标签统一宽度，保证左侧对齐
+
+        def _lbl(text):
+            l = QLabel(text)
+            l.setObjectName("formLabel")
+            l.setFixedWidth(LBL_W)
+            return l
+
+        # ---- 第 1 行：BASE URL ----
         self.ed_url = QLineEdit(self.cfg.get("base_url", ""))
         self.ed_url.setPlaceholderText("http://localhost:8082/v1")
+        r1 = QHBoxLayout()
+        r1.setSpacing(10)
+        r1.addWidget(_lbl("BASE URL"))
+        r1.addWidget(self.ed_url, 1)
+        bl.addLayout(r1)
+
+        # ---- 第 2 行：API KEY ----
         self.ed_key = QLineEdit(self.cfg.get("api_key", ""))
         self.ed_key.setPlaceholderText("sk-... (模型测试必须填写有效 Key)")
         self.ed_key.setEchoMode(QLineEdit.Password)
-        self.btn_eye = QPushButton("显示")
+        self.btn_eye = QPushButton("...")
         self.btn_eye.setObjectName("ghostBtn")
-        self.btn_eye.setFixedWidth(64)
+        self.btn_eye.setFixedWidth(44)
+        self.btn_eye.setCursor(Qt.PointingHandCursor)
+        self.btn_eye.setToolTip("显示 / 隐藏 API Key")
         self.btn_eye.clicked.connect(self._toggle_key)
+        r2 = QHBoxLayout()
+        r2.setSpacing(10)
+        r2.addWidget(_lbl("API KEY"))
+        r2.addWidget(self.ed_key, 1)
+        r2.addWidget(self.btn_eye)
+        bl.addLayout(r2)
+
+        # ---- 第 3 行：超时 / 并发 / 回复上限 / 保存 ----
         self.sp_timeout = QSpinBox()
         self.sp_timeout.setRange(1, 600)
         self.sp_timeout.setValue(int(self.cfg.get("timeout", 15)))
+        self.sp_timeout.setSuffix(" 秒")
+        self.sp_timeout.setToolTip("拉取模型列表的请求超时")
+
+        self.sp_ttimeout = QSpinBox()
+        self.sp_ttimeout.setRange(1, 600)
+        self.sp_ttimeout.setValue(int(self.cfg.get("test_timeout", 30)))
+        self.sp_ttimeout.setSuffix(" 秒")
+        self.sp_ttimeout.setToolTip("单个模型测试请求的超时")
+
         self.sp_conf = QSpinBox()
         self.sp_conf.setRange(1, 32)
         self.sp_conf.setValue(int(self.cfg.get("test_concurrency", 3)))
         self.sp_conf.setToolTip("批量测试时的最大并发请求数")
+
         self.sp_maxtok = QSpinBox()
         self.sp_maxtok.setRange(1, 8192)
         self.sp_maxtok.setValue(int(self.cfg.get("max_tokens", 64)))
         self.sp_maxtok.setToolTip("测试请求的 max_tokens：设大一点才能看出模型是否完整回话")
-        form.addWidget(QLabel("BASE URL"))
-        form.addWidget(self.ed_url, 3)
-        form.addWidget(QLabel("API Key"))
-        form.addWidget(self.ed_key, 2)
-        form.addWidget(self.btn_eye)
-        form.addWidget(QLabel("超时"))
-        form.addWidget(self.sp_timeout)
-        form.addWidget(QLabel("并发数"))
-        form.addWidget(self.sp_conf)
-        form.addWidget(QLabel("回复上限"))
-        form.addWidget(self.sp_maxtok)
-        bl.addLayout(form)
+
+        self.btn_save = QPushButton("保存配置")
+        self.btn_save.setObjectName("ghostBtn")
+        self.btn_save.setCursor(Qt.PointingHandCursor)
+        self.btn_save.clicked.connect(self.save_config)
+
+        r3 = QHBoxLayout()
+        r3.setSpacing(10)
+        r3.addWidget(_lbl("列表超时"))
+        r3.addWidget(self.sp_timeout)
+        r3.addWidget(QLabel("测试超时"))
+        r3.addWidget(self.sp_ttimeout)
+        r3.addWidget(QLabel("并发数"))
+        r3.addWidget(self.sp_conf)
+        r3.addWidget(QLabel("回复上限"))
+        r3.addWidget(self.sp_maxtok)
+        r3.addStretch(1)
+        r3.addWidget(self.btn_save)
+        bl.addLayout(r3)
 
         self.btn_detect = DetectButton("⚡  一 键 检 测")
         self.btn_detect.clicked.connect(self.start_detect)
         bl.addWidget(self.btn_detect)
+
+        # ---- 状态条：● 就绪 · 延迟 · 模型数 · 上次检测 ----
+        self.statbar = QFrame()
+        self.statbar.setObjectName("statBar")
+        sb = QHBoxLayout(self.statbar)
+        sb.setContentsMargins(14, 7, 14, 7)
+        sb.setSpacing(16)
+        self.stat_dot = StatusDot(self.statbar, 9)
+        self.stat_state = QLabel("就绪")
+        self.stat_state.setObjectName("statState")
+        sb.addWidget(self.stat_dot)
+        sb.addWidget(self.stat_state)
+        sb.addStretch(1)
+
+        def _metric(name):
+            k = QLabel(name)
+            k.setObjectName("statName")
+            v = QLabel("--")
+            v.setObjectName("statValue")
+            sb.addWidget(k)
+            sb.addWidget(v)
+            return v
+
+        self.stat_latency = _metric("延迟")
+        self.stat_models = _metric("模型数")
+        self.stat_last = _metric("上次检测")
+        bl.addWidget(self.statbar)
 
         bar = QHBoxLayout()
         self.ed_search = QLineEdit()
@@ -1180,6 +1272,7 @@ class MainWindow(QMainWindow):
         self.list = QListWidget()
         self.list.setObjectName("modelList")
         self.list.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.list.setMinimumHeight(90)          # 允许被压缩，把空间让给日志
 
         self.logpanel = LogPanel(self)
         self.logpanel.ed_alias.setText(self.cfg.get("account_alias", "") or "")
@@ -1192,12 +1285,14 @@ class MainWindow(QMainWindow):
         self.split.setChildrenCollapsible(False)
         self.split.addWidget(self.list)
         self.split.addWidget(self.logpanel)
-        self.split.setStretchFactor(0, 3)
-        self.split.setStretchFactor(1, 2)
-        self.split.setSizes([400, 230])
+        # 模型列表可滚动，不需要太高；下半区域主要留给日志
+        self.split.setStretchFactor(0, 1)
+        self.split.setStretchFactor(1, 3)
+        self.split.setSizes([200, 360])
         bl.addWidget(self.split, 1)
 
-        self.status = QLabel("就绪")
+        self.status = QLabel(
+            "v%s · 配置与历史内置存储(注册表)，无外部文件 · F5 快捷检测" % APP_VERSION)
         self.status.setObjectName("footer")
         bl.addWidget(self.status)
 
@@ -1237,15 +1332,16 @@ class MainWindow(QMainWindow):
     def _toggle_key(self):
         if self.ed_key.echoMode() == QLineEdit.Password:
             self.ed_key.setEchoMode(QLineEdit.Normal)
-            self.btn_eye.setText("隐藏")
+            self.btn_eye.setToolTip("隐藏 API Key")
         else:
             self.ed_key.setEchoMode(QLineEdit.Password)
-            self.btn_eye.setText("显示")
+            self.btn_eye.setToolTip("显示 API Key")
 
     def save_config(self):
         self.cfg["base_url"] = self.ed_url.text().strip()
         self.cfg["api_key"] = self.ed_key.text().strip()
         self.cfg["timeout"] = int(self.sp_timeout.value())
+        self.cfg["test_timeout"] = int(self.sp_ttimeout.value())
         self.cfg["test_concurrency"] = int(self.sp_conf.value())
         self.cfg["always_on_top"] = bool(self.titlebar.pin.isChecked())
         self.cfg["account_alias"] = self.logpanel.ed_alias.text().strip()
@@ -1398,6 +1494,7 @@ class MainWindow(QMainWindow):
         self.ed_url.setText(str(self.cfg.get("base_url", "")))
         self.ed_key.setText(str(self.cfg.get("api_key", "")))
         self.sp_timeout.setValue(int(self.cfg.get("timeout", 15)))
+        self.sp_ttimeout.setValue(int(self.cfg.get("test_timeout", 30)))
         self.sp_conf.setValue(int(self.cfg.get("test_concurrency", 3)))
         self.sp_maxtok.setValue(int(self.cfg.get("max_tokens", 64)))
         self.logpanel.ed_alias.setText(str(self.cfg.get("account_alias", "") or ""))
@@ -1419,7 +1516,7 @@ class MainWindow(QMainWindow):
             return
         self._save_now()
         self._set_busy(True)
-        self.titlebar.dot.set_status("busy")
+        self.stat_dot.set_status("busy")
         self._set_status("正在检测")
         self.btn_detect.setText("检 测 中")
         self.list.clear()
@@ -1442,6 +1539,7 @@ class MainWindow(QMainWindow):
         self.cfg["base_url"] = self.ed_url.text().strip()
         self.cfg["api_key"] = self.ed_key.text().strip()
         self.cfg["timeout"] = int(self.sp_timeout.value())
+        self.cfg["test_timeout"] = int(self.sp_ttimeout.value())
         self.cfg["test_concurrency"] = int(self.sp_conf.value())
         self.cfg["account_alias"] = self.logpanel.ed_alias.text().strip()
         self.cfg["max_tokens"] = int(self.sp_maxtok.value())
@@ -1464,18 +1562,22 @@ class MainWindow(QMainWindow):
         self.btn_detect.setText("检 测 中" + "." * self._busy_n)
 
     def _set_status(self, text):
-        self.status.setText(text)
+        """更新状态条左侧文字（底部那行是固定说明，不承担状态显示）。"""
+        self.stat_state.setText(text)
 
     def _on_success(self, models, ms):
         self.models = models
         self._results = {}
-        self.titlebar.dot.set_status("ok")
-        self._set_status("检测成功 · %d 个模型 · %.0f ms" % (len(models), ms))
+        self.stat_dot.set_status("ok")
+        self._set_status("检测成功")
+        self.stat_latency.setText("%.0f ms" % ms)
+        self.stat_models.setText(str(len(models)))
+        self.stat_last.setText(datetime.now().strftime("%H:%M:%S"))
         self._populate_list()
         self._record_history(True, len(models), ms)
 
     def _on_failure(self, tag, detail):
-        self.titlebar.dot.set_status("error")
+        self.stat_dot.set_status("error")
         self._set_status("检测失败: " + str(tag))
         self.toast("检测失败: %s" % tag)
         self._placeholder()
@@ -1540,7 +1642,7 @@ class MainWindow(QMainWindow):
             self.ed_url.text().strip(),
             self.ed_key.text().strip(),
             model_id,
-            int(self.cfg.get("test_timeout", 30)),
+            int(self.sp_ttimeout.value()),
             int(self.sp_maxtok.value()),
         )
         w.progress.connect(self._on_test_progress)
@@ -1584,6 +1686,7 @@ class MainWindow(QMainWindow):
         row = self._rows.get(model_id)
         if row is not None:
             row.set_result(ms)
+        self.stat_latency.setText("%.0f ms" % ms)
         if self._log_multi:
             self.logpanel.line("  ✓ %s  ·  %.0f ms" % (model_id, ms), "r")
         else:
@@ -1609,12 +1712,14 @@ class MainWindow(QMainWindow):
         if self._pending:
             self._pump_test_queue()
         elif self._active == 0:
+            if not self._log_multi:
+                self._set_status("就绪")   # 单个测试：不报「批量」汇总，状态复位
+                return
             ok = sum(1 for v in self._results.values() if isinstance(v, float))
             msg = "批量测试完成: %d/%d 成功" % (ok, len(self.models))
-            if self._log_multi:
-                self.logpanel.sep()
-                self.logpanel.line("✓ " + msg if ok else "✗ " + msg,
-                                   "r" if ok else "e")
+            self.logpanel.sep()
+            self.logpanel.line("✓ " + msg if ok else "✗ " + msg,
+                               "r" if ok else "e")
             self._log_multi = False
             self.toast(msg)
             self._set_status(msg)
