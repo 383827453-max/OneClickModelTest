@@ -1,0 +1,27 @@
+{
+  "exported_at": "2026-09-17T18:00:44Z",
+  "proxies": [],
+  "accounts": [
+    {
+      "name": "福利生图",
+      "platform": "openai",
+      "type": "apikey",
+      "credentials": {
+        "api_key": "sk-5zQpQMkRyYg60WPJcl8d3MRVsoOuyURKmkDDm5IbO1Y4jdI6",
+        "base_url": "https://api.apisaver.com"
+      },
+      "extra": {
+        "openai_apikey_responses_websockets_v2_enabled": false,
+        "openai_apikey_responses_websockets_v2_mode": "off",
+        "openai_long_context_billing_enabled": false,
+        "openai_responses_supported": true,
+        "upstream_billing_probe_enabled": true,
+        "upstream_billing_rate_sync_enabled": false
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    }
+  ]
+}

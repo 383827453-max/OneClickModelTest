@@ -12,7 +12,84 @@
 ### 计划中
 - 英文 README
 - PR 模板
-- 模型列表快照的导入（当前仅配置可导入）
+- 多账号列表（当前导入多账号文件只载入第 1 个）
+
+---
+
+## [1.2.5] - 2026-09-18
+
+### 变更 —— 导出/导入改用 sub2api 账号格式
+
+v1.2.3 的自有配置格式（`{app, kind, config:{...}}`）与 sub2api 不兼容，
+**导入 sub2api 导出的账号文件无法识别**。本次改为 sub2api 账号格式。
+
+**导出**（文件名 `sub2api-account-YYYYMMDDHHMMSS.json`）：
+
+```json
+{
+  "exported_at": "2026-09-18T01:58:21Z",
+  "proxies": [],
+  "accounts": [
+    {
+      "name": "福利生图",
+      "platform": "openai",
+      "type": "apikey",
+      "credentials": {
+        "api_key": "sk-...",
+        "base_url": "https://api.apisaver.com"
+      },
+      "extra": {
+        "openai_apikey_responses_websockets_v2_enabled": false,
+        "openai_apikey_responses_websockets_v2_mode": "off",
+        "openai_long_context_billing_enabled": false,
+        "openai_responses_supported": true,
+        "upstream_billing_probe_enabled": true,
+        "upstream_billing_rate_sync_enabled": false
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    }
+  ]
+}
+```
+
+字段映射：
+
+| sub2api | 本工具 |
+|---|---|
+| `accounts[0].name` | 账号别名（日志里的「开始测试账号」） |
+| `accounts[0].credentials.base_url` | BASE URL |
+| `accounts[0].credentials.api_key` | API KEY |
+| `accounts[0].concurrency` | 并发数 |
+| `accounts[0].platform` | 固定 `openai` |
+| `accounts[0].type` | 固定 `apikey` |
+
+**导入**自动识别三种格式，无需手动选：
+
+1. **sub2api 账号格式** `{accounts:[{name, credentials:{...}}]}`
+2. 应用自有格式 `{config:{...}}`（v1.2.3 导出，仍兼容）
+3. 裸配置（顶层直接是 `base_url` 等字段）
+
+**多账号文件**：`accounts` 含多个账号时，载入第 1 个，
+并在日志面板列出全部账号名（`平台/类型`），提示手动取舍。
+
+### 变更（其他）
+
+- 菜单项文字明确化：导出账号 JSON（sub2api 格式）/ 导入账号 JSON（自动识别格式）
+- 剪贴板复制/粘贴同样使用 sub2api 格式
+
+### 验证
+
+- 新增 `tests/smoke_sub2api_io.py`（**52 项断言**）：
+  - 导出结构与真实 sub2api 样本**逐键比对**（顶层 / account 键集一致，
+    credentials / extra 为子集）
+  - 用真实 sub2api 导出文件导入，校验 name / base_url / api_key / concurrency
+  - 文件往返、多账号提示、类型容错、边界值（`concurrency: 9999` 夹到 32）
+  - 旧格式向后兼容、剪贴板往返
+- 更新 `smoke_config_io.py` 中断言旧导出格式的 4 处用例
+- 累计 **128 项断言**（22 + 54 + 52）全通过
 
 ---
 

@@ -2,7 +2,7 @@
 
 一个**科技风深色 GUI 工具**，用于一键检测任意 **OpenAI 兼容接口**的可用模型列表，并逐个/批量测试模型的响应延迟。
 
-> 版本 **v1.2.4** · Python 3.13 + PySide6 · Windows
+> 版本 **v1.2.5** · Python 3.13 + PySide6 · Windows
 
 ![界面预览](docs/screenshot.png)
 
@@ -151,49 +151,73 @@ POST {BASE URL}/chat/completions    -> {"choices": [...]}
 
 ## 配置导入 / 导出
 
-工具栏 **「配置 ▾」** 提供四个操作，全部一键完成：
+工具栏 **「配置 ▾」** 提供五项操作：
 
 | 菜单项 | 作用 |
 |---|---|
-| 导出配置为 JSON 文件 | 把当前全部设置写入 JSON（默认名 `一键测API-配置-YYYYMMDD.json`） |
-| 从 JSON 文件导入配置 | 选文件后立即应用并持久化 |
-| 复制配置到剪贴板 | 直接把 JSON 放进剪贴板 |
-| 从剪贴板粘贴配置 | 从剪贴板读取并应用 |
+| 导出账号 JSON（sub2api 格式） | 写入 `sub2api-account-YYYYMMDDHHMMSS.json` |
+| 导入账号 JSON（自动识别格式） | 选文件后立即应用并持久化 |
+| 复制账号 JSON 到剪贴板 | 直接把 JSON 放进剪贴板 |
+| 从剪贴板粘贴账号 JSON | 从剪贴板读取并应用 |
 | 恢复默认配置 | 一键回到出厂设置 |
 
-导出的 JSON 带自描述头，方便识别和分享：
+### 导出格式（sub2api 账号格式）
 
 ```json
 {
-  "app": "一键测API",
-  "kind": "config",
-  "version": "1.2.3",
-  "exported_at": "2026-09-18 00:30:00",
-  "note": "此文件包含 API Key，请妥善保管",
-  "config": {
-    "base_url": "http://localhost:8082/v1",
-    "api_key": "sk-...",
-    "timeout": 15,
-    "test_concurrency": 3,
-    "max_tokens": 64,
-    "account_alias": "",
-    "always_on_top": false,
-    "show_log": true
-  }
+  "exported_at": "2026-09-18T01:58:21Z",
+  "proxies": [],
+  "accounts": [
+    {
+      "name": "福利生图",
+      "platform": "openai",
+      "type": "apikey",
+      "credentials": {
+        "api_key": "sk-...",
+        "base_url": "https://api.apisaver.com"
+      },
+      "extra": {
+        "openai_apikey_responses_websockets_v2_enabled": false,
+        "openai_apikey_responses_websockets_v2_mode": "off",
+        "openai_long_context_billing_enabled": false,
+        "openai_responses_supported": true,
+        "upstream_billing_probe_enabled": true,
+        "upstream_billing_rate_sync_enabled": false
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    }
+  ]
 }
 ```
 
-> ⚠️ 导出的文件**包含明文 API Key**，请勿提交到公开仓库或发送给他人。
+字段对应关系：
 
-**导入是容错的**，不会因为一个字段写错就整体失败：
+| sub2api 字段 | 本工具字段 |
+|---|---|
+| `accounts[0].name` | 账号别名（日志里的「开始测试账号」） |
+| `accounts[0].credentials.base_url` | BASE URL |
+| `accounts[0].credentials.api_key` | API KEY |
+| `accounts[0].concurrency` | 并发数 |
 
-- 兼容 `{config:{...}}` 包装形式和**裸配置**（顶层直接是字段）
-- 类型不符的字段丢弃（如 `timeout: "abc"`、`base_url: 123`）
-- 未知键忽略，不影响其余字段导入
-- 数字型字段接受数字字符串（`"77"` → `77`）
-- 布尔字段接受 `"true"` / `"1"` / `"yes"` / `"on"`
-- `base_url` 为空 → **整体拒绝**，不覆盖当前配置
-- 无任何有效字段 → 拒绝并提示
+> ⚠️ 导出文件**包含明文 API Key**，请勿提交到公开仓库或发送给他人。
+
+### 导入自动识别三种格式
+
+无需手动选择格式，程序自动判断：
+
+1. **sub2api 账号格式** — `{accounts:[{name, credentials:{base_url, api_key}}]}`
+2. **应用自有格式** — `{config:{base_url, api_key, ...}}`（旧版导出，仍兼容）
+3. **裸配置** — 顶层直接是 `base_url` 等字段
+
+**多账号文件**：`accounts` 含多个账号时，载入第 1 个，
+并在日志面板列出全部账号名（附 `平台/类型`），提示手动取舍。
+
+**容错**：类型不符的字段丢弃、未知键忽略、数字字符串自动转换、
+`concurrency` 超范围自动夹到 1–32、账号缺 `base_url` 整体拒绝。
+非法 JSON、空剪贴板、剪贴板非 JSON 均有明确中文提示。
 
 ## 项目结构
 
@@ -207,12 +231,14 @@ POST {BASE URL}/chat/completions    -> {"choices": [...]}
 ├── LICENSE
 ├── tests/
 │   ├── smoke_v122.py          # 日志面板冒烟测试（22 项断言）
-│   └── smoke_config_io.py     # 配置导入导出测试（52 项断言）
+│   ├── smoke_config_io.py     # 配置导入导出测试（54 项断言）
+│   └── smoke_sub2api_io.py    # sub2api 账号格式测试（52 项断言）
 ├── .github/
 │   ├── workflows/build.yml    # CI：遍历跑 smoke_*.py + 构建 Windows exe
 │   └── ISSUE_TEMPLATE/        # Bug 报告 / 功能建议表单
 ├── docs/
-│   └── screenshot.png         # 界面预览图
+│   ├── screenshot.png         # 界面预览图
+│   └── sample-sub2api-account.json  # 导出格式样例
 └── docs_bytecode_disasm.txt   # 字节码反汇编存档（用于核对逻辑）
 ```
 
@@ -222,9 +248,11 @@ POST {BASE URL}/chat/completions    -> {"choices": [...]}
 # 全部冒烟测试（不联网、不写注册表）
 python tests/smoke_v122.py
 python tests/smoke_config_io.py
+python tests/smoke_sub2api_io.py
 ```
 
 CI 会自动遍历 `tests/smoke_*.py`，新增测试文件无需改 workflow。
+累计 **128 项断言**。
 
 ## 源码结构
 

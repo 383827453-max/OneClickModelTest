@@ -7,7 +7,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 from PySide6.QtCore import (QEasingCurve, QPointF, QRectF, QSettings, QSize,
@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog,
                                QTextEdit, QToolButton, QVBoxLayout, QWidget)
 
 APP_NAME = '一键测API'
-APP_VERSION = '1.2.4'
+APP_VERSION = '1.2.5'
 C_CYAN = '#00e5ff'
 C_PURPLE = '#a855f7'
 C_GREEN = '#00ff9d'
@@ -1364,11 +1364,11 @@ class MainWindow(QMainWindow):
 
     def show_config_menu(self):
         menu = QMenu(self)
-        act_exp = menu.addAction("导出配置为 JSON 文件 ...")
-        act_imp = menu.addAction("从 JSON 文件导入配置 ...")
+        act_exp = menu.addAction("导出账号 JSON（sub2api 格式）...")
+        act_imp = menu.addAction("导入账号 JSON（自动识别格式）...")
         menu.addSeparator()
-        act_copy = menu.addAction("复制配置到剪贴板")
-        act_paste = menu.addAction("从剪贴板粘贴配置")
+        act_copy = menu.addAction("复制账号 JSON 到剪贴板")
+        act_paste = menu.addAction("从剪贴板粘贴账号 JSON")
         menu.addSeparator()
         act_reset = menu.addAction("恢复默认配置")
         act = menu.exec(self.btn_cfg.mapToGlobal(self.btn_cfg.rect().bottomLeft()))
@@ -1383,8 +1383,101 @@ class MainWindow(QMainWindow):
         elif act is act_reset:
             self.reset_config()
 
+    # ---------- sub2api 账号格式 ----------
+
+    @staticmethod
+    def _iso_utc():
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def _account_name_or_host(self):
+        """账号名：优先别名，否则用 BASE URL 主机名。"""
+        alias = (self.logpanel.ed_alias.text() or "").strip()
+        if alias:
+            return alias
+        url = (self.ed_url.text() or "").strip()
+        host = url.split("//")[-1].split("/")[0] if url else ""
+        return host or "未命名账号"
+
+    def _sub2api_payload(self):
+        """导出为 sub2api 账号格式：{exported_at, proxies, accounts:[...]}。"""
+        self._save_now()
+        return {
+            "exported_at": self._iso_utc(),
+            "proxies": [],
+            "accounts": [
+                {
+                    "name": self._account_name_or_host(),
+                    "platform": "openai",
+                    "type": "apikey",
+                    "credentials": {
+                        "api_key": str(self.cfg.get("api_key", "")),
+                        "base_url": str(self.cfg.get("base_url", "")),
+                    },
+                    "extra": {
+                        "openai_apikey_responses_websockets_v2_enabled": False,
+                        "openai_apikey_responses_websockets_v2_mode": "off",
+                        "openai_long_context_billing_enabled": False,
+                        "openai_responses_supported": True,
+                        "upstream_billing_probe_enabled": True,
+                        "upstream_billing_rate_sync_enabled": False,
+                    },
+                    "concurrency": int(self.cfg.get("test_concurrency", 3)),
+                    "priority": 1,
+                    "rate_multiplier": 1,
+                    "auto_pause_on_expired": True,
+                }
+            ],
+        }
+
+    @staticmethod
+    def _parse_sub2api_payload(data):
+        """解析 sub2api 账号导出。
+
+        返回 (cfg_dict, accounts_meta)。cfg_dict 取第一个账号的字段：
+        name → account_alias, credentials.base_url/api_key, concurrency。
+        """
+        if not isinstance(data, dict):
+            return {}, []
+        accounts = data.get("accounts")
+        if not isinstance(accounts, list) or not accounts:
+            return {}, []
+
+        metas = []
+        for acc in accounts:
+            if not isinstance(acc, dict):
+                continue
+            metas.append({
+                "name": acc.get("name", "") if isinstance(acc.get("name"), str) else "",
+                "platform": acc.get("platform", "") if isinstance(acc.get("platform"), str) else "",
+                "type": acc.get("type", "") if isinstance(acc.get("type"), str) else "",
+                "has_creds": isinstance(acc.get("credentials"), dict),
+            })
+
+        first = next((a for a in accounts if isinstance(a, dict)), None)
+        if first is None:
+            return {}, metas
+
+        cred = first.get("credentials")
+        if not isinstance(cred, dict):
+            cred = {}
+
+        cfg = {}
+        base = cred.get("base_url")
+        if isinstance(base, str) and base.strip():
+            cfg["base_url"] = base.strip()
+        key = cred.get("api_key")
+        if isinstance(key, str) and key.strip():
+            cfg["api_key"] = key.strip()
+        nm = first.get("name")
+        if isinstance(nm, str) and nm.strip():
+            cfg["account_alias"] = nm.strip()
+        cc = first.get("concurrency")
+        if isinstance(cc, (int, float)) and not isinstance(cc, bool):
+            cfg["test_concurrency"] = max(1, min(32, int(cc)))
+        return cfg, metas
+
     def _config_payload(self):
-        """当前配置 → 可序列化字典（含 API Key）。"""
+        """应用自有格式（向后兼容，导入时仍认）。"""
         self._save_now()
         return {
             "app": APP_NAME,
@@ -1396,18 +1489,18 @@ class MainWindow(QMainWindow):
         }
 
     def export_config_json(self):
-        default = "一键测API-配置-%s.json" % datetime.now().strftime("%Y%m%d")
+        default = "sub2api-account-%s.json" % datetime.now().strftime("%Y%m%d%H%M%S")
         path, _ = QFileDialog.getSaveFileName(
-            self, "导出配置", default, "JSON 文件 (*.json);;所有文件 (*)")
+            self, "导出账号 JSON", default, "JSON 文件 (*.json);;所有文件 (*)")
         if not path:
             return
         try:
             with open(path, "w", encoding="utf-8") as f:
-                json.dump(self._config_payload(), f, ensure_ascii=False, indent=2)
+                json.dump(self._sub2api_payload(), f, ensure_ascii=False, indent=2)
         except OSError as e:
             self.toast("导出失败: %s" % e)
             return
-        self.toast("配置已导出: " + os.path.basename(path))
+        self.toast("账号已导出: " + os.path.basename(path))
 
     def import_config_json(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -1423,9 +1516,9 @@ class MainWindow(QMainWindow):
         self._apply_imported(data, os.path.basename(path))
 
     def copy_config_json(self):
-        text = json.dumps(self._config_payload(), ensure_ascii=False, indent=2)
+        text = json.dumps(self._sub2api_payload(), ensure_ascii=False, indent=2)
         QApplication.clipboard().setText(text)
-        self.toast("配置 JSON 已复制到剪贴板")
+        self.toast("账号 JSON 已复制到剪贴板")
 
     def paste_config_json(self):
         text = QApplication.clipboard().text() or ""
@@ -1476,9 +1569,34 @@ class MainWindow(QMainWindow):
         return out
 
     def _apply_imported(self, data, source):
+        # ① 优先识别 sub2api 账号格式 {accounts:[{name, credentials:{...}}]}
+        sub_cfg, metas = self._parse_sub2api_payload(data)
+        if sub_cfg:
+            if not str(sub_cfg.get("base_url", "")).strip():
+                self.toast("导入失败: 账号缺少 base_url")
+                return
+            for k, v in sub_cfg.items():
+                self.cfg[k] = v
+            self._apply_cfg_to_ui()
+            save_config_data(self.cfg)
+            n = len(metas) or 1
+            name = sub_cfg.get("account_alias") or self._account_name_or_host()
+            if n > 1:
+                self.toast("检测到 %d 个账号，已载入第 1 个「%s」" % (n, name))
+                self.logpanel.line("⚠ 该文件含 %d 个账号，当前仅载入第 1 个" % n, "w")
+                for m in metas:
+                    self.logpanel.line("    · %s  [%s/%s]"
+                                       % (m.get("name") or "(无名)",
+                                          m.get("platform") or "?",
+                                          m.get("type") or "?"), "k")
+            else:
+                self.toast("已导入账号「%s」" % name)
+            return
+
+        # ② 回落：应用自有格式 / 裸配置
         got = self._parse_config_payload(data)
         if not got:
-            self.toast("导入失败: 未识别到配置字段")
+            self.toast("导入失败: 未识别到账号或配置字段")
             return
         if "base_url" in got and not str(got.get("base_url", "")).strip():
             self.toast("导入失败: base_url 为空")

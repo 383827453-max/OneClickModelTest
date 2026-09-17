@@ -77,8 +77,14 @@ w.export_config_json()
 ck("导出后文件已生成", os.path.exists(path))
 raw = json.load(open(path, encoding="utf-8"))
 ck("落盘 JSON 可解析", isinstance(raw, dict))
-ck("落盘含 config 段", isinstance(raw.get("config"), dict))
-ck("落盘未含未知键", set(raw.get("config", {})) <= set(main.DEFAULT_CONFIG))
+ck("落盘含 accounts 段（sub2api 格式）",
+   isinstance(raw.get("accounts"), list) and len(raw["accounts"]) == 1,
+   repr(list(raw.keys())))
+ck("落盘含 proxies 空数组", raw.get("proxies") == [])
+ck("落盘 account 含 credentials",
+   isinstance(raw["accounts"][0].get("credentials"), dict))
+ck("落盘 credentials 键合法",
+   set(raw["accounts"][0]["credentials"]) <= {"api_key", "base_url", "model_mapping"})
 
 # 清空界面，再从文件导入
 w.ed_url.setText("")
@@ -141,7 +147,9 @@ w.copy_config_json()
 clip = QApplication.clipboard().text()
 ck("剪贴板拿到 JSON", clip.strip().startswith("{"))
 parsed = json.loads(clip)
-ck("剪贴板 JSON 可解析", parsed.get("kind") == "config")
+ck("剪贴板 JSON 是 sub2api 结构",
+   isinstance(parsed.get("accounts"), list) and "proxies" in parsed,
+   repr(list(parsed.keys())))
 
 w.ed_url.setText("")
 w.paste_config_json()
